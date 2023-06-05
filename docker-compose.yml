@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  app:
+    container_name: north_steel_test__app
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./docker/api/Dockerfile
+    env_file:
+      - .env
+    command: ["poetry", "run", "python", "-m", "main"]
+    volumes:
+      - ${APP_DIR_PATH}:${APP_DIR_PATH_INTERNAL}
+
+  postgres:
+    container_name: north_steel_test__postgres
+    image: postgres:13.1
+    restart: unless-stopped
+    environment:
+      - PGDATA=/var/lib/postgresql/data/pgdata
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - ${EXT_POSTGRES_PORT}:5432
+    volumes:
+      - ${POSTGRES_DATA_VOLUME}:/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d ${POSTGRES_DB} -U ${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 120s
+      retries: 5
+
+  migrations:
+    container_name: north_steel_test__postgres_migrations
+    build:
+      context: .
+      dockerfile: docker/migrations/Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: [
+        "poetry", "run", "python", "-m", "scripts.migrate"
+    ]
+
+  redis:
+    container_name: north_steel_test__redis
+    image: redis:7.2-rc-alpine
+    restart: unless-stopped
+    ports:
+      - ${EXT_REDIS_PORT}:6379
+    env_file:
+      - .env
+    volumes:
+      - ${REDIS_VOLUME}:/data
+    command: [ "--requirepass", "${REDIS_PASSWORD}" ]
